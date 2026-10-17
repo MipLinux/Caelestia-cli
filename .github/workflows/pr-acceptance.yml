@@ -1,0 +1,185 @@
+name: PR acceptance（验收对账）
+
+# 把 PR 正文里的「验证方式」与它关掉的那条 issue 的「验收」对成一张分档表。
+# 判据的唯一源是 .github/review/ai-review-rubric.md 第十节（那份文档就是 system prompt）。
+#
+# 分工：.github/review/scripts/pr-acceptance-context.sh 抽判据、抽声称、给机械信号（含多对多关联）；
+#       模型逐条复核并定档（尤其 R2「被更强的证据替代」这种机械信号判不出来的）。
+#
+# 本检查**不判定真伪**：机器人看不到本机实测，也不出「通过 / 不通过」。
+
+on:
+  pull_request:
+    # 刻意**不挂 synchronize**：每次 push 都刷一条评论 = 噪音，而且那时判据往往还没跑完。
+    types: [opened, ready_for_review]
+  # 手动重跑：改完 PR 正文、或想刷新那条已经过期的评论时用（能 dispatch 的人本来就有写权限，
+  # 所以这条路径不需要再过 author_association 那道门）。
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR 编号'
+        required: true
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  acceptance:
+    # 只对与本仓库有关联的人跑（与 ai-summary 同一套门；仓库公开，陌生人不该花我们的 token）。
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (!github.event.pull_request.draft &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 检查 DeepSeek 密钥
+        id: secret
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            echo "::notice::未配置 DEEPSEEK_API_KEY，跳过本次验收对账。"
+          else
+            echo "skip=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: fork PR 没有 secret，明确跳过（不是失败）
+        id: fork
+        if: steps.secret.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          # 手动重跑时不检查 fork（能 dispatch 的人有写权限，secret 也拿得到）
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "skip=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            echo "::notice::来自 fork 的 PR 拿不到本仓库的 secret，本次跳过验收对账（按 rubric §10.3 的约定）。"
+          else
+            echo "skip=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: 生成上下文（脚本算机械信号）
+        id: ctx
+        if: steps.secret.outputs.skip != 'true' && steps.fork.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number || github.event.inputs.pr }}
+        # 产物写进工作区：下面的 action 是 Docker action（WORKDIR=/app，runner 的 /tmp 不与容器共享）
+        run: |
+          set -euo pipefail
+          ./.github/review/scripts/pr-acceptance-context.sh --pr "$PR" --out "$GITHUB_WORKSPACE/.pr-acceptance"
+
+      # 步骤名必须是**中性的**：这一步只决定「发不发评论」，而跳过有**两种互斥**的原因。
+      # 原因一律写进 run 页面（step summary + 注解），不靠步骤名传达。
+      - name: 门槛：head / 判据（决定是否发评论）
+        id: gate
+        if: steps.secret.outputs.skip != 'true' && steps.fork.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number || github.event.inputs.pr }}
+        run: |
+          set -euo pipefail
+          head=$(awk -F'\t' '$1=="head"{print $2}' .pr-acceptance/meta.tsv | cut -c1-7)
+          [ -n "$head" ] || { echo "::error::读不到 head sha"; exit 1; }
+          echo "head=$head" >>"$GITHUB_OUTPUT"
+
+          # 步骤名不能按运行结果变化，日志正文又要点进去才看得见 —— 所以结论落在
+          # `$GITHUB_STEP_SUMMARY`（run 页面上直接显示）与 `::notice::`（注解）上。
+          report() { # $1=标题 $2=一句结论
+            {
+              echo "### 验收对账：$1"
+              echo
+              echo "- head：\`$head\`"
+              echo "- 结论：$2"
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice::$2"
+          }
+
+          # 没有可对账的判据时**整条不发**：一条只剩表头和免责声明的评论读者读不懂，是纯噪音。
+          # 放在查旧评论之前，省一次 API 调用。刻意不删旧评论：本检查只发、不删别人可见的状态。
+          if grep -q '^⚠️ 无法判定' .pr-acceptance/facts.md; then
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            report "没有可对账的判据，不发评论" \
+              "没有可对账的判据（PR 正文没写 \`Closes #N\`，或关联 issue 没有「验收」段），本次不评论 —— 这是「没得对」，不是「查过没问题」。"
+            exit 0
+          fi
+
+          old=$(gh api "repos/{owner}/{repo}/issues/$PR/comments" --paginate \
+                  -q '.[] | select(.body | contains("caelestia-acceptance: head=")) | .id' | tail -1 || true)
+          echo "comment_id=$old" >>"$GITHUB_OUTPUT"
+          if [ -n "$old" ]; then
+            oldhead=$(gh api "repos/{owner}/{repo}/issues/comments/$old" -q .body \
+                        | sed -n 's/.*caelestia-acceptance: head=\([0-9a-f]\{7\}\).*/\1/p' | head -1)
+            if [ "$oldhead" = "$head" ]; then
+              echo "skip=true" >>"$GITHUB_OUTPUT"
+              report "head 没变，不发评论" "上一次评论已经覆盖 head $head，跳过。"
+            else
+              echo "skip=false" >>"$GITHUB_OUTPUT"
+              report "发出评论" "上一次评论是 $oldhead，本次 head 是 $head，更新那一条。"
+            fi
+          else
+            echo "skip=false" >>"$GITHUB_OUTPUT"
+            report "发出评论" "这条 PR 上还没有本检查的评论，新建一条（head $head）。"
+          fi
+
+      - name: 逐条复核（AI 定档）
+        id: ai
+        if: steps.secret.outputs.skip != 'true' && steps.fork.outputs.skip != 'true' && steps.gate.outputs.skip != 'true'
+        # 钉版本的理由见 ai-summary.yml：浮动的 @v1 仍指向以 uid 1000 运行、写不了 GITHUB_OUTPUT 的 v1.3.1
+        uses: appleboy/LLM-action@v1.4.0
+        with:
+          base_url: 'https://api.deepseek.com'
+          api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          model: 'deepseek-flash'
+          # 不设 temperature：思考模式下无效；档位稳定性由 rubric 的档位定义兜。
+          # 取官方 thinking 模式的默认值 64K，推理与正文共用这个预算。
+          max_tokens: '65536'
+          # 必须是**容器内**的工作区挂载点（Docker action 的 WORKDIR 是 /app）
+          system_prompt: 'file:///github/workspace/.github/review/ai-review-rubric.md'
+          input_prompt: 'file:///github/workspace/.pr-acceptance/context.md'
+
+      - name: 发评论（新建或就地编辑）
+        if: steps.secret.outputs.skip != 'true' && steps.fork.outputs.skip != 'true' && steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number || github.event.inputs.pr }}
+          COMMENT_ID: ${{ steps.gate.outputs.comment_id }}
+          HEAD: ${{ steps.gate.outputs.head }}
+          SEMANTIC: ${{ steps.ai.outputs.response }}
+        run: |
+          set -euo pipefail
+          {
+            cat .pr-acceptance/facts.md
+            echo
+            if [ -n "$SEMANTIC" ]; then
+              printf '%s\n' "$SEMANTIC"
+            else
+              echo "⚠️ 逐条复核本次没有输出，上面只有脚本算出的机械信号（不是判决）。"
+            fi
+            # 末尾不写免责声明：「不裁决 / 不判真伪」这类话读者读不懂，
+            # 反而分不清是机器判不了还是 PR 有问题。
+            echo
+            printf '<!-- caelestia-acceptance: head=%s -->\n' "$HEAD"
+          } >.pr-acceptance/comment.md
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/{owner}/{repo}/issues/comments/$COMMENT_ID" \
+              -f body="$(cat .pr-acceptance/comment.md)" >/dev/null
+            echo "已就地更新评论 $COMMENT_ID"
+          else
+            gh api -X POST "repos/{owner}/{repo}/issues/$PR/comments" \
+              -f body="$(cat .pr-acceptance/comment.md)" >/dev/null
+            echo "已新建评论"
+          fi
+
+          [ -n "$SEMANTIC" ] || exit 1

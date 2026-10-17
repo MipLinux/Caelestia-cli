@@ -1,0 +1,100 @@
+name: 报告 Bug
+description: 报告 CLI 子命令、安装/更新流程或打包行为不正确
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > ⚠️ **顶栏、面板、启动器等 shell 组件的问题请提到 [shell 仓库](https://github.com/MipLinux/Caelestia-shell/issues)。**
+        > **dotfiles 配置本身（Hyprland / 终端 / 主题等）的问题请提到 [dotfiles 仓库](https://github.com/MipLinux/Caelestia-dotfiles/issues)。**
+        > 本仓库只维护 `caelestia` CLI：子命令、安装 / 更新流程、Nix / PyPI 打包。
+        >
+        > **如果你依据文档操作遇到了问题，请先确认是「文档与实际情况不符」还是代码本身有 Bug。**
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过现有 Issue，没有重复
+          required: true
+        - label: 这不是安全漏洞报告（安全漏洞请走 SECURITY.md 的私下通道）
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及的子命令 / 范围
+      options:
+        - install（安装 dotfiles）
+        - update（更新 dotfiles）
+        - scheme（配色方案）
+        - shell（启动 / 控制 shell）
+        - screenshot / record（截图 / 录屏）
+        - clipboard / emoji（剪贴板 / emoji）
+        - wallpaper（壁纸）
+        - toggle / resizer（特殊工作区 / 窗口调整）
+        - 配色 / 主题渲染
+        - 打包（pyproject / Nix / 发布）
+        - 文档与脚本本身
+        - 其它
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么，以及你期望发生什么。请贴实际输出，不要只写「报错了」。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请给出准确的命令或操作序列，不要写「按文档操作」。
+      placeholder: |
+        1. 执行 `caelestia update`
+        2. 在……之后
+        3. 出现……
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 运行 `caelestia -v`，并附上本仓库的提交号（`git rev-parse --short HEAD`）。
+      placeholder: caelestia 1.x / 639dd6e
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 环境
+      description: 发行版与版本、Python 版本、Hyprland / Wayland、GPU，以及 CLI 的安装方式（AUR / Nix / pip / 源码）。
+      placeholder: Arch Linux / Python 3.13 / Hyprland 0.5x / Wayland / NVIDIA / AUR
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: |
+        CLI 输出、`journalctl`、安装器日志等。**请贴文本，不要只贴截图** —— 文本可以搜索和引用。
+        注意删除日志中的个人信息。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 你已经尝试过什么
+      description: 排查过程能帮我们省下大量时间，即使没有成功也值得写。
+    validations:
+      required: false

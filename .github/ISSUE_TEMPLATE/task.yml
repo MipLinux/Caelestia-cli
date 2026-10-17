@@ -1,0 +1,88 @@
+name: 工作分配
+description: 一条有明确目标、实现范围、验收判据与回报要求的工作
+title: "[工作] "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        一条工作 = 一个 issue。**验收写不出来就别开** —— 写不出判据，说明这件事还没想清楚。
+
+        字段怎么用：
+        - **目标**写「什么从不能变成能」，不写做法；
+        - **实现**逐个写出仓库内路径，并明确**不**做什么；
+        - **验收**写命令 + 期望结果，不写「能用了」「看起来正常」；
+        - 受理人用 GitHub 的 Assignees 控件选择，不写进正文。
+
+        合并前先读 [CONTRIBUTING.md](https://github.com/MipLinux/Caelestia-cli/blob/main/.github/CONTRIBUTING.md)；
+        审查流程见 [.github/review/README.md](https://github.com/MipLinux/Caelestia-cli/blob/main/.github/review/README.md)。
+
+  - type: input
+    id: goal
+    attributes:
+      label: 目标
+      description: 一句话，写「什么从不能变成能 / 从错变成对」，不写做法。
+      placeholder: 例如：`caelestia update` 在 dots 仓库不可达时给出可操作的错误，而不是直接抛栈。
+    validations:
+      required: true
+
+  - type: textarea
+    id: implement
+    attributes:
+      label: 实现
+      description: |
+        做什么、**改哪些文件（逐个写仓库内路径）**、明确**不**做什么。
+        路径写出来，所有权才切得开 —— 撞在同一批文件上的两条线没法并行。
+      placeholder: |
+        改 src/caelestia/utils/dots/source.py 的错误处理；
+        同步 src/caelestia/subcommands/update.py 的提示；
+        不碰 pyproject.toml（不新增依赖）。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收
+      description: |
+        能在本机跑出来的判据：**命令 + 期望结果**。
+        没有实测证据不许写「已验证」，只能写 未实测 / 仅静态检查 / 仅 dry-run。
+      placeholder: |
+        `PYTHONPATH=src python -m caelestia update` 在断网时 → 退出码非 0，输出包含可操作提示；
+        `python -m compileall -q src` → 退出码 0。
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: 回报
+      description: 做完交什么、给谁 —— 命令输出、文件路径、实测结果，写清楚。
+      placeholder: 例如：把断网复现的命令与输出贴在 issue 下，并 @ 维护者过目。
+    validations:
+      required: true
+
+  - type: textarea
+    id: depends-on
+    attributes:
+      label: 依赖
+      description: 被哪个 issue / 上游改动 / 打包约束卡住；没有就写「无」。
+      placeholder: 无
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+
+        **开工前请执行：**
+
+        ```bash
+        git fetch origin
+        git switch main && git pull --ff-only
+        git switch -c feat/<主题>   # 修 Bug 用 fix/<主题>，只改文档用 docs/<主题>
+        ```
+
+        > 功能改动从维护者指定的 `mip` 分支 / tag 切；`mip` 不存在时先问维护者。
+        > 分支不在目标分支上、或拉取不是快进 → 停下来问维护者，**不要**自行 `merge` / `rebase` / `reset --hard`。
