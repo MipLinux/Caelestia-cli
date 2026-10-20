@@ -296,7 +296,7 @@ render() {
         <(awk -F'\t' '$1 ~ /\//{p=$1; sub(/\/[^\/]*$/,"",p); print p}' "$TMP/own.tsv" | LC_ALL=C sort -u) \
         <(awk -F'\t' '$1 ~ /\//{p=$1; sub(/\/[^\/]*$/,"",p); print p}' "$TMP/o.tsv"  | LC_ALL=C sort -u) \
         >"$TMP/dirs.tsv" || true
-      cut -f1 "$TMP/hard.tsv" | sed 's|/[^/]*$||' | LC_ALL=C sort -u >"$TMP/harddirs.tsv" || true
+      awk -F'\t' -v who="#$num" '$2==who{print $1}' "$TMP/hard.tsv" | sed 's|/[^/]*$||' | LC_ALL=C sort -u >"$TMP/harddirs.tsv" || true
       if [ -s "$TMP/dirs.tsv" ]; then
         if [ -s "$TMP/harddirs.tsv" ]; then
           grep -vxF -f "$TMP/harddirs.tsv" "$TMP/dirs.tsv" >"$TMP/dirs.soft.tsv" || true

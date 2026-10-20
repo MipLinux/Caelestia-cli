@@ -112,7 +112,7 @@ detect_mechanical_signals() {
 
   # 1. 文件头：生成的 / CI 维护的文件不应由 PR 手改
   local generated
-  generated=$(grep -En '^[+]{3} b/(dist/|result|flake\.lock|src/caelestia/data/emojis\.txt|.*__pycache__/|.*\.pyc$)' "$diff_file" || true)
+  generated=$(grep -En '^[+]{3} b/(dist/|result(/|$)|flake\.lock|src/caelestia/data/emojis\.txt|.*__pycache__/|.*\.pyc$)' "$diff_file" || true)
   if [ -n "$generated" ]; then
     signals+=("发现改动生成文件或 CI 维护文件（flake.lock / emojis.txt / dist / 缓存不应手改）：\n$generated")
   fi
@@ -234,13 +234,18 @@ else
 fi
 
 # 过滤不需要审查的文件类型（构建产物、缓存、IDE 目录）
-grep -vE '^diff --git a/(dist/|result|\.idea/|.*__pycache__/)' "$TMP/raw.diff" >"$TMP/filtered.diff" || true
+awk '
+  /^diff --git / {
+    skip = ($0 ~ /^diff --git a\/(dist\/|result(\/| )|\.idea\/|([^/]+\/)*__pycache__\/)/)
+  }
+  !skip { print }
+' "$TMP/raw.diff" >"$TMP/filtered.diff"
 
 # 生成带行号的 diff
 annotate_diff "$TMP/filtered.diff" >"$TMP/annotated.diff"
 
 # 提取机械信号
-SIGNALS=$(detect_mechanical_signals "$TMP/filtered.diff")
+SIGNALS=$(detect_mechanical_signals "$TMP/raw.diff")
 
 # 组装 context.md
 {

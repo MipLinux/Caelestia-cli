@@ -80,9 +80,12 @@ body:
 
         ```bash
         git fetch origin
-        git switch main && git pull --ff-only
-        git switch -c feat/<主题>   # 修 Bug 用 fix/<主题>，只改文档用 docs/<主题>
+        git switch mip && git pull --ff-only
+        git switch -c feat/my-topic
         ```
 
-        > 功能改动从维护者指定的 `mip` 分支 / tag 切；`mip` 不存在时先问维护者。
+        将 `my-topic` 换成实际主题；修 Bug 用 `fix/` 前缀，只改文档用 `docs/` 前缀。
+
+        > 功能改动从维护者指定的 `mip` 分支 / tag 切；上例适用于分支，指定 tag 时用 `git switch --detach` 后接该 tag，跳过 `git pull`。`mip` 不存在时先问维护者。
+        > 只有明确指定从 `main` 开始的任务才将上例的 `mip` 换成 `main`。
         > 分支不在目标分支上、或拉取不是快进 → 停下来问维护者，**不要**自行 `merge` / `rebase` / `reset --hard`。

@@ -143,7 +143,7 @@ section_of() { # $1=文件 $2=段名
 # 把一段切成条目：列表项各算一条，空行也算分隔（与 ai-review-context.sh 同一套切法）
 blocks_of() { # $1=文件
   awk '{ if ($0 ~ /^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]/) print ""; print }' "$1" \
-    | awk 'BEGIN{RS="";ORS="\n"} {gsub(/^[[:space:]]+|[[:space:]]+$/,""); if (length($0)) print $0"\n"}'
+    | awk 'BEGIN{RS="";ORS="\n"} {gsub(/\n/," "); gsub(/^[[:space:]]+|[[:space:]]+$/,""); if (length($0)) print $0}'
 }
 
 # ── 条目分型（rubric §10.3）────────────────────────────────────────────────────

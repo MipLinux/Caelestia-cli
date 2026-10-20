@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: 检查 DeepSeek 密钥
         id: secret
@@ -115,12 +117,12 @@ jobs:
           fi
 
           old=$(gh api "repos/{owner}/{repo}/issues/$PR/comments" --paginate \
-                  -q '.[] | select(.body | contains("caelestia-acceptance: head=")) | .id' | tail -1 || true)
+                  -q '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("caelestia-acceptance: head=")) | .id' | tail -1 || true)
           echo "comment_id=$old" >>"$GITHUB_OUTPUT"
           if [ -n "$old" ]; then
             oldhead=$(gh api "repos/{owner}/{repo}/issues/comments/$old" -q .body \
                         | sed -n 's/.*caelestia-acceptance: head=\([0-9a-f]\{7\}\).*/\1/p' | head -1)
-            if [ "$oldhead" = "$head" ]; then
+            if [ "$oldhead" = "$head" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
               echo "skip=true" >>"$GITHUB_OUTPUT"
               report "head 没变，不发评论" "上一次评论已经覆盖 head $head，跳过。"
             else
@@ -149,7 +151,9 @@ jobs:
           input_prompt: 'file:///github/workspace/.pr-acceptance/context.md'
 
       - name: 发评论（新建或就地编辑）
-        if: steps.secret.outputs.skip != 'true' && steps.fork.outputs.skip != 'true' && steps.gate.outputs.skip != 'true'
+        if: >
+          !cancelled() && steps.gate.outcome == 'success' &&
+          steps.secret.outputs.skip != 'true' && steps.fork.outputs.skip != 'true' && steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number || github.event.inputs.pr }}

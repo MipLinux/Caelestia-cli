@@ -287,7 +287,7 @@ jobs:
               if start_line is not None:
                   try:
                       sl = int(start_line)
-                      if sl < line_int:
+                      if sl < line_int and all(n in valid_lines.get(path, set()) for n in range(sl, line_int + 1)):
                           item["start_line"] = sl
                           item["start_side"] = "RIGHT"
                   except (ValueError, TypeError):

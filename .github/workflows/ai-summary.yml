@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: 检查 DeepSeek 密钥
         id: secret
@@ -75,7 +77,7 @@ jobs:
           # 找我们之前发的那条（靠 marker），比正文 sha 决定是「就地编辑」还是「新建」。
           # 找不到 marker 就当没有 —— 宁可多发一条，也不误改别人的评论。
           old=$(gh api "repos/{owner}/{repo}/issues/$ISSUE/comments" --paginate \
-                  -q '.[] | select(.body | contains("caelestia-review: body=")) | .id' | tail -1 || true)
+                  -q '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("caelestia-review: body=")) | .id' | tail -1 || true)
           echo "comment_id=$old" >>"$GITHUB_OUTPUT"
           if [ -n "$old" ]; then
             oldsha=$(gh api "repos/{owner}/{repo}/issues/comments/$old" -q .body \
@@ -92,6 +94,7 @@ jobs:
 
       - name: 语义判断（AI 判语义）
         id: ai
+        continue-on-error: true
         if: steps.secret.outputs.skip != 'true' && steps.gate.outputs.skip != 'true'
         # 不要用浮动的 @v1：它仍指向 v1.3.1，其镜像以 uid 1000 运行，
         # 无权写入 runner 的 GITHUB_OUTPUT（挂载在 /github/file_commands），
@@ -124,14 +127,14 @@ jobs:
             echo
             if [ -n "$SEMANTIC" ]; then
               printf '%s\n' "$SEMANTIC"
+              echo
+              printf '<!-- caelestia-review: body=%s -->\n' "$SHA"
             else
               # 确定性的那半仍然发出去：它是脚本算的，跟模型无关
               echo "⚠️ 语义判断（判据质检 / 查重 / 引用有效性）本次没有输出，上面只有脚本算出的确定性事实。"
             fi
             # 末尾不写免责声明：「不裁决 / 不代表受理生效」这类话读者读不懂，
             # 反而分不清是机器判不了还是 issue 有问题。
-            echo
-            printf '<!-- caelestia-review: body=%s -->\n' "$SHA"
           } >.ai-review/comment.md
 
           if [ -n "$COMMENT_ID" ]; then
